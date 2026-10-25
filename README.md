@@ -23,6 +23,7 @@ flowchart LR
 
 | Stage | What happens |
 |---|---|
+| Checkout | Pulls the latest commit from the repository |
 | Build | `mvn clean test`; JUnit results published in Jenkins |
 | Static analysis | SonarQube scan using a token generated at setup and stored as a Jenkins credential |
 | Package | Builds the JAR and archives it as a Jenkins artifact |

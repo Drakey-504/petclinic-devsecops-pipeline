@@ -4,3 +4,11 @@
 
 /gradlew        text eol=lf
 *.bat           text eol=crlf
+
+# Language stats: count the pipeline in infra/, not the upstream Spring PetClinic app
+src/** linguist-vendored
+*.css linguist-vendored
+*.scss linguist-vendored
+mvnw* linguist-vendored
+gradlew* linguist-vendored
+.devcontainer/** linguist-vendored

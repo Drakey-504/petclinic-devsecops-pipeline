@@ -1,171 +1,76 @@
-# Spring PetClinic Sample Application [![Build Status](https://github.com/spring-projects/spring-petclinic/actions/workflows/maven-build.yml/badge.svg)](https://github.com/spring-projects/spring-petclinic/actions/workflows/maven-build.yml)[![Build Status](https://github.com/spring-projects/spring-petclinic/actions/workflows/gradle-build.yml/badge.svg)](https://github.com/spring-projects/spring-petclinic/actions/workflows/gradle-build.yml)
+# Spring PetClinic DevSecOps Pipeline
 
-[![Open in Gitpod](https://gitpod.io/button/open-in-gitpod.svg)](https://gitpod.io/#https://github.com/spring-projects/spring-petclinic) [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://github.com/codespaces/new?hide_repo_select=true&ref=main&repo=7517918)
+A self-hosted CI/CD pipeline that builds, tests, scans, and deploys the Spring PetClinic app to staging and production VMs, with static analysis (SonarQube), dynamic security testing (OWASP ZAP) against staging before production, and Prometheus/Grafana monitoring. One script brings up the whole environment; another tears it down.
 
-## Understanding the Spring Petclinic application with a few diagrams
+**Course:** 17-636 DevOps, Carnegie Mellon University, Fall 2025  
+**Team:** Karthik Chakkalakal, Sarvesh Navare, Srushti Venkatesh Reddy
 
-See the presentation here:  
-[Spring Petclinic Sample Application (legacy slides)](https://speakerdeck.com/michaelisvy/spring-petclinic-sample-application?slide=20)
+All of the pipeline and infrastructure work lives in [`infra/`](infra/). The application itself is the upstream [Spring PetClinic](https://github.com/spring-projects/spring-petclinic) sample app (see [About the base application](#about-the-base-application)).
 
-> **Note:** These slides refer to a legacy, pre–Spring Boot version of Petclinic and may not reflect the current Spring Boot–based implementation.  
-> For up-to-date information, please refer to this repository and its documentation.
+## Pipeline
 
-
-## Run Petclinic locally
-
-Spring Petclinic is a [Spring Boot](https://spring.io/guides/gs/spring-boot) application built using [Maven](https://spring.io/guides/gs/maven/) or [Gradle](https://spring.io/guides/gs/gradle/).
-Java 25 or later is required for the build, but the application can run with Java 17 or newer:
-
-```bash
-git clone https://github.com/spring-projects/spring-petclinic.git
-cd spring-petclinic
-./mvnw package
-java -jar target/*.jar
+```mermaid
+flowchart LR
+    A[Git push] --> B[Jenkins<br/>polls every 3 min]
+    B --> C[Build + unit tests<br/>Maven, JUnit]
+    C --> D[Static analysis<br/>SonarQube]
+    D --> E[Package JAR]
+    E --> F[Deploy to staging VM<br/>Ansible]
+    F --> G[DAST on staging<br/>OWASP ZAP spider + active scan]
+    G --> H[Deploy to production VM<br/>Ansible]
+    P[Prometheus + Grafana] -. monitors .-> B
 ```
 
-(On Windows, or if your shell doesn't expand the glob, you might need to specify the JAR file name explicitly on the command line at the end there.)
+| Stage | What happens |
+|---|---|
+| Build | `mvn clean test`; JUnit results published in Jenkins |
+| Static analysis | SonarQube scan using a token generated at setup and stored as a Jenkins credential |
+| Package | Builds the JAR and archives it as a Jenkins artifact |
+| Staging deployment | Ansible copies the JAR to the staging VM and runs it as a systemd service |
+| Security analysis | Waits for staging to come up, then runs a ZAP spider and active scan against it through the ZAP API; the HTML report is archived and published in Jenkins |
+| Production deployment | Same Ansible playbook, targeting the production VM |
 
-You can then access the Petclinic at <http://localhost:8080/>.
+## Highlights
 
-<img width="1042" alt="petclinic-screenshot" src="https://cloud.githubusercontent.com/assets/838318/19727082/2aee6d6c-9b8e-11e6-81fe-e889a5ddfded.png">
+- **One-command setup.** `infra/auto_script.sh` starts the Docker containers (Jenkins, SonarQube, OWASP ZAP, Prometheus, Grafana, Node Exporter), creates the staging and production VMs with Vagrant, generates a SonarQube token through its API, and hands credentials to Jenkins. `infra/cleanup_script.sh` removes the containers, volumes, and VMs.
+- **Jenkins configured as code.** Jenkins Configuration as Code (JCasC) and Groovy init scripts create the admin user, the SonarQube connection, the credentials, and the pipeline job, so the pipeline is ready to run at first login. Anonymous access is disabled.
+- **Credentials kept out of the pipeline code.** The SonarQube token, ZAP API key, and per-VM SSH keys are injected as environment variables at startup, stored in the Jenkins credential store, and unset from the shell afterward. The Jenkinsfile only references credential IDs. The setup script ships with default values for the Jenkins password and ZAP API key so it runs out of the box; they are meant to be overridden.
+- **Hardened target VMs.** Both Ubuntu 24.04 VMs disable SSH password authentication, and Ansible runs the app under a dedicated non-root user as a systemd service.
+- **Dynamic testing before production.** Every build is scanned by ZAP on staging before it reaches production. The scan produces a report rather than a gate: findings do not automatically block the production deployment.
+- **Monitoring.** Prometheus scrapes Jenkins and host metrics; Grafana ships with pre-provisioned dashboards.
+- **Runs on ARM and x86.** The Vagrant box supports both architectures. It was developed on Apple Silicon (macOS) and also run on x86 (Windows 11), with less testing there.
 
-Or you can run it from Maven directly using the Spring Boot Maven plugin. If you do this, it will pick up changes that you make in the project immediately (changes to Java source files require a compile as well - most people use an IDE for this):
+## Running it
 
-```bash
-./mvnw spring-boot:run
-```
-
-> NOTE: If you prefer to use Gradle, you can build the app using `./gradlew build` and look for the jar file in `build/libs`.
-
-## Building a Container
-
-There is no `Dockerfile` in this project. You can build a container image (if you have a docker daemon) using the Spring Boot build plugin:
-
-```bash
-./mvnw spring-boot:build-image
-```
-
-## In case you find a bug/suggested improvement for Spring Petclinic
-
-Our issue tracker is available [here](https://github.com/spring-projects/spring-petclinic/issues).
-
-## Database configuration
-
-In its default configuration, Petclinic uses an in-memory database (H2) which
-gets populated at startup with data. The h2 console is exposed at `http://localhost:8080/h2-console`,
-and it is possible to inspect the content of the database using the `jdbc:h2:mem:<uuid>` URL. The UUID is printed at startup to the console.
-
-A similar setup is provided for MySQL and PostgreSQL if a persistent database configuration is needed. Note that whenever the database type changes, the app needs to run with a different profile: `spring.profiles.active=mysql` for MySQL or `spring.profiles.active=postgres` for PostgreSQL. See the [Spring Boot documentation](https://docs.spring.io/spring-boot/how-to/properties-and-configuration.html#howto.properties-and-configuration.set-active-spring-profiles) for more detail on how to set the active profile.
-
-You can start MySQL or PostgreSQL locally with whatever installer works for your OS or use docker:
+Prerequisites, setup steps, service URLs, and cleanup are in [`infra/README.md`](infra/README.md). In short:
 
 ```bash
-docker run -e MYSQL_USER=petclinic -e MYSQL_PASSWORD=petclinic -e MYSQL_ROOT_PASSWORD=root -e MYSQL_DATABASE=petclinic -p 3306:3306 mysql:9.2
+cd infra
+./auto_script.sh      # bring everything up
+./cleanup_script.sh   # tear everything down
 ```
 
-or
+## Contributions
 
-```bash
-docker run -e POSTGRES_USER=petclinic -e POSTGRES_PASSWORD=petclinic -e POSTGRES_DB=petclinic -p 5432:5432 postgres:18.0
-```
+**Karthik Chakkalakal** ([@Drakey-504](https://github.com/Drakey-504))
+- Wrote the Jenkins pipeline (`Jenkinsfile`), including the ZAP scanning stage and the staging and production deployment stages
+- Built the staging and production VMs with Vagrant, including SSH hardening, and the Ansible deployment playbook
+- Set up Jenkins configuration as code and the SSH credential wiring between Jenkins and the VMs
+- Built the custom ZAP container and automated SonarQube token generation
+- Wrote the setup and cleanup scripts and most of the setup documentation
 
-Further documentation is provided for [MySQL](https://github.com/spring-projects/spring-petclinic/blob/main/src/main/resources/db/mysql/petclinic_db_setup_mysql.txt)
-and [PostgreSQL](https://github.com/spring-projects/spring-petclinic/blob/main/src/main/resources/db/postgres/petclinic_db_setup_postgres.txt).
+**Sarvesh Navare** ([@snavare-andrew](https://github.com/snavare-andrew))
+- Built the Docker Compose stack and the Prometheus and Grafana monitoring, including the dashboards
+- Wrote the Groovy init script that loads the SonarQube token into Jenkins, and fixed pipeline build issues
+- Hosted the original team repository ([snavare-andrew/spring-petclinic-devops](https://github.com/snavare-andrew/spring-petclinic-devops))
 
-Instead of vanilla `docker` you can also use the provided `docker-compose.yml` file to start the database containers. Each one has a service named after the Spring profile:
+**Srushti Venkatesh Reddy**
+- Set up the initial Jenkins and SonarQube containers and the Jenkins plugin list
 
-```bash
-docker compose up mysql
-```
+## Stack
 
-or
+Jenkins (JCasC, Blue Ocean) · SonarQube · OWASP ZAP · Docker Compose · Vagrant · VirtualBox · Ansible · Prometheus · Grafana · Node Exporter · Maven · Bash
 
-```bash
-docker compose up postgres
-```
+## About the base application
 
-## Test Applications
-
-At development time we recommend you use the test applications set up as `main()` methods in `PetClinicIntegrationTests` (using the default H2 database and also adding Spring Boot Devtools), `MySqlTestApplication` and `PostgresIntegrationTests`. These are set up so that you can run the apps in your IDE to get fast feedback and also run the same classes as integration tests against the respective database. The MySql integration tests use Testcontainers to start the database in a Docker container, and the Postgres tests use Docker Compose to do the same thing.
-
-## Compiling the CSS
-
-There is a `petclinic.css` in `src/main/resources/static/resources/css`. It was generated from the `petclinic.scss` source, combined with the [Bootstrap](https://getbootstrap.com/) library. If you make changes to the `scss`, or upgrade Bootstrap, you will need to re-compile the CSS resources using the Maven profile "css", i.e. `./mvnw package -P css`. There is no build profile for Gradle to compile the CSS.
-
-## Working with Petclinic in your IDE
-
-### Prerequisites
-
-The following items should be installed in your system:
-
-- Java 25 or newer (full JDK, not a JRE)
-- [Git command line tool](https://help.github.com/articles/set-up-git)
-- Your preferred IDE
-  - Eclipse with the m2e plugin. Note: when m2e is available, there is an m2 icon in `Help -> About` dialog. If m2e is
-  not there, follow the install process [here](https://www.eclipse.org/m2e/)
-  - [Spring Tools Suite](https://spring.io/tools) (STS)
-  - [IntelliJ IDEA](https://www.jetbrains.com/idea/)
-  - [VS Code](https://code.visualstudio.com)
-
-### Steps
-
-1. On the command line run:
-
-    ```bash
-    git clone https://github.com/spring-projects/spring-petclinic.git
-    ```
-
-1. Inside Eclipse or STS:
-
-    Open the project via `File -> Import -> Maven -> Existing Maven project`, then select the root directory of the cloned repo.
-
-    Then either build on the command line `./mvnw generate-resources` or use the Eclipse launcher (right-click on project and `Run As -> Maven install`) to generate the CSS. Run the application's main method by right-clicking on it and choosing `Run As -> Java Application`.
-
-1. Inside IntelliJ IDEA:
-
-    In the main menu, choose `File -> Open` and select the Petclinic [pom.xml](pom.xml). Click on the `Open` button.
-
-    - CSS files are generated from the Maven build. You can build them on the command line `./mvnw generate-resources` or right-click on the `spring-petclinic` project then `Maven -> Generates sources and Update Folders`.
-
-    - A run configuration named `PetClinicApplication` should have been created for you if you're using a recent Ultimate version. Otherwise, run the application by right-clicking on the `PetClinicApplication` main class and choosing `Run 'PetClinicApplication'`.
-
-1. Navigate to the Petclinic
-
-    Visit [http://localhost:8080](http://localhost:8080) in your browser.
-
-## Looking for something in particular?
-
-|Spring Boot Configuration | Class or Java property files  |
-|--------------------------|---|
-|The Main Class | [PetClinicApplication](https://github.com/spring-projects/spring-petclinic/blob/main/src/main/java/org/springframework/samples/petclinic/PetClinicApplication.java) |
-|Properties Files | [application.properties](https://github.com/spring-projects/spring-petclinic/blob/main/src/main/resources) |
-|Caching | [CacheConfiguration](https://github.com/spring-projects/spring-petclinic/blob/main/src/main/java/org/springframework/samples/petclinic/system/CacheConfiguration.java) |
-
-## Interesting Spring Petclinic branches and forks
-
-The Spring Petclinic "main" branch in the [spring-projects](https://github.com/spring-projects/spring-petclinic)
-GitHub org is the "canonical" implementation based on Spring Boot and Thymeleaf. There are
-[quite a few forks](https://spring-petclinic.github.io/docs/forks.html) in the GitHub org
-[spring-petclinic](https://github.com/spring-petclinic). If you are interested in using a different technology stack to implement the Pet Clinic, please join the community there.
-
-## Interaction with other open-source projects
-
-One of the best parts about working on the Spring Petclinic application is that we have the opportunity to work in direct contact with many Open Source projects. We found bugs/suggested improvements on various topics such as Spring, Spring Data, Bean Validation and even Eclipse! In many cases, they've been fixed/implemented in just a few days.
-Here is a list of them:
-
-| Name | Issue |
-|------|-------|
-| Spring JDBC: simplify usage of NamedParameterJdbcTemplate | [SPR-10256](https://github.com/spring-projects/spring-framework/issues/14889) and [SPR-10257](https://github.com/spring-projects/spring-framework/issues/14890) |
-| Bean Validation / Hibernate Validator: simplify Maven dependencies and backward compatibility |[HV-790](https://hibernate.atlassian.net/browse/HV-790) and [HV-792](https://hibernate.atlassian.net/browse/HV-792) |
-| Spring Data: provide more flexibility when working with JPQL queries | [DATAJPA-292](https://github.com/spring-projects/spring-data-jpa/issues/704) |
-
-## Contributing
-
-The [issue tracker](https://github.com/spring-projects/spring-petclinic/issues) is the preferred channel for bug reports, feature requests and submitting pull requests.
-
-For pull requests, editor preferences are available in the [editor config](.editorconfig) for easy use in common text editors. Read more and download plugins at <https://editorconfig.org>. All commits must include a __Signed-off-by__ trailer at the end of each commit message to indicate that the contributor agrees to the Developer Certificate of Origin.
-For additional details, please refer to the blog post [Hello DCO, Goodbye CLA: Simplifying Contributions to Spring](https://spring.io/blog/2025/01/06/hello-dco-goodbye-cla-simplifying-contributions-to-spring).
-
-## License
-
-The Spring PetClinic sample application is released under version 2.0 of the [Apache License](https://www.apache.org/licenses/LICENSE-2.0).
+This repository is a fork of [spring-projects/spring-petclinic](https://github.com/spring-projects/spring-petclinic). The application code (`src/`), its build files, the `k8s/` manifests, and the `.github/workflows` builds come from the upstream project and its contributors, under the Apache 2.0 license ([`LICENSE.txt`](LICENSE.txt)). They are not part of this course project. See the upstream repository for details on the application itself.

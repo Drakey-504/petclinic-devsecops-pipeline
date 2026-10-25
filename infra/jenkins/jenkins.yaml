@@ -44,7 +44,7 @@ jobs:
             scm {
               git {
                 remote {
-                  url('https://github.com/snavare-andrew/spring-petclinic-devops.git')
+                  url('https://github.com/Drakey-504/petclinic-devsecops-pipeline.git')
                 }
                 branches('*/main')
               }

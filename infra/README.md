@@ -3,7 +3,7 @@
 Setup guide for Spring Petclinic DevOps pipeline with Jenkins, SonarQube, OWASP ZAP, Prometheus, and Grafana. The production and staging VMs are setup using Vagrant and deployed to via Ansible.
 
 
-## Team - 4 Members
+## Team - 3 Members
 1. Karthik Chakkalakal (kchakkal@andrew.cmu.edu)
 2. Sarvesh Navare (snavare@andrew.cmu.edu)
 3. Srushti Venkatesh Reddy (srushtiv@cs.cmu.edu)
@@ -91,8 +91,8 @@ All files related to infrastructure setup, deployment, monitoring, configuration
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/snavare-andrew/spring-petclinic-devops.git
-cd spring-petclinic-devops/infra
+git clone https://github.com/Drakey-504/petclinic-devsecops-pipeline.git
+cd petclinic-devsecops-pipeline/infra
 ```
 
 ### 2. Setup Infrastructure and Configure Tools
@@ -110,7 +110,7 @@ More specifications are available as comments in the auto_script.sh file
 
 ### Jenkins
 - **URL**: http://localhost:8080
-- **Username**: `admin`
+- **Username**: `jenkins_admin`
 - **Password**: `devops@2025` (Default. Check auto_script.sh to user define)
 
 ### SonarQube
@@ -134,7 +134,7 @@ More specifications are available as comments in the auto_script.sh file
 ## Pipeline Steps
 
 ### 1. Trigger Build
-- Navigate to Jenkins -> Skip setup (If shown) →  Navigate to **spring-petclinic** job
+- Navigate to Jenkins -> Skip setup (If shown) →  Navigate to **spring-petclinic-pipeline** job
 - Click **Build Now**
 
 ### 2. Pipeline Stages
@@ -174,7 +174,7 @@ Paste the Prod URL above in the browser after successful build. This leads to th
 
 ```bash
 // Make bash script executable on host and run
-cd spring-petclinic-devops/infra
+cd petclinic-devsecops-pipeline/infra
 chmod +x ./cleanup_script.sh
 ./cleanup_script.sh
 ```
@@ -182,9 +182,3 @@ chmod +x ./cleanup_script.sh
 This script removes the created docker containers and volumes in the docker compose file. 
 Additionally, it removes the Vagrant Prod and Staging VMs and removes local Vagrant state.
 Note: The script excepts confirmation from the user before removing Vagrant VMs and will wait indefinitely for user input.
-
-## Pipeline Demonstration Video
-
-URL : https://drive.google.com/file/d/1ZqjOXKAqgUVTT4vIONYLCMg8gWTJNQHk/view?usp=share_link
-
-This video is provided with access to all CMU users.

@@ -18,7 +18,7 @@ flowchart LR
     E --> F[Deploy to staging VM<br/>Ansible]
     F --> G[DAST on staging<br/>OWASP ZAP spider + active scan]
     G --> H[Deploy to production VM<br/>Ansible]
-    P[Prometheus + Grafana<br/>Jenkins + Docker host metrics] -. monitors .-> B
+    P["Prometheus + Grafana<br/>(Jenkins and Docker<br/>host metrics)"] -. monitors .-> B
 ```
 
 | Stage | What happens |

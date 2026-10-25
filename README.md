@@ -18,7 +18,7 @@ flowchart LR
     E --> F[Deploy to staging VM<br/>Ansible]
     F --> G[DAST on staging<br/>OWASP ZAP spider + active scan]
     G --> H[Deploy to production VM<br/>Ansible]
-    P[Prometheus + Grafana] -. monitors .-> B
+    P[Prometheus + Grafana<br/>Jenkins + Docker host metrics] -. monitors .-> B
 ```
 
 | Stage | What happens |
@@ -37,7 +37,7 @@ flowchart LR
 - **Credentials kept out of the pipeline code.** The SonarQube token, ZAP API key, and per-VM SSH keys are injected as environment variables at startup, stored in the Jenkins credential store, and unset from the shell afterward. The Jenkinsfile only references credential IDs. The setup script ships with default values for the Jenkins password and ZAP API key so it runs out of the box; they are meant to be overridden.
 - **Hardened target VMs.** Both Ubuntu 24.04 VMs disable SSH password authentication, and Ansible runs the app under a dedicated non-root user as a systemd service.
 - **Dynamic testing before production.** Every build is scanned by ZAP on staging before it reaches production. The scan produces a report rather than a gate: findings do not automatically block the production deployment.
-- **Monitoring.** Prometheus scrapes Jenkins and host metrics; Grafana ships with pre-provisioned dashboards.
+- **Monitoring.** Prometheus scrapes Jenkins metrics and host metrics from Node Exporter on the Docker host; Grafana ships with pre-provisioned dashboards. The staging and production VMs are not monitored.
 - **Runs on ARM and x86.** The Vagrant box supports both architectures. It was developed on Apple Silicon (macOS) and also run on x86 (Windows 11), with less testing there.
 
 ## Running it
